@@ -1,3 +1,11 @@
+/*  Copyright 2019 Ash Logan "quarktheawesome" <ash@heyquark.com>
+    Copyright 2019 Maschell
+
+    Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+*/
+
 #include <wups.h>
 #include <malloc.h>
 #include <string.h>
@@ -21,11 +29,12 @@
     Mandatory plugin information.
     If not set correctly, the loader will refuse to use the plugin.
 **/
-WUPS_PLUGIN_NAME("Example plugin");
-WUPS_PLUGIN_DESCRIPTION("This is just an example plugin and will log the FSOpenFile function.");
+WUPS_PLUGIN_NAME("VideoSquoosher");
+WUPS_PLUGIN_DESCRIPTION("Squooshes the Gamepad and TV video side-by-side, " \
+    "displaying that on your TV");
 WUPS_PLUGIN_VERSION("v1.0");
-WUPS_PLUGIN_AUTHOR("Maschell");
-WUPS_PLUGIN_LICENSE("BSD");
+WUPS_PLUGIN_AUTHOR("Maschell & quarktheawesome");
+WUPS_PLUGIN_LICENSE("ISC");
 
 GX2ColorBuffer main_cbuf;
 GX2Texture drcTex;
