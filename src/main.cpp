@@ -32,6 +32,7 @@ GX2Texture drcTex;
 GX2Texture tvTex;
 GX2Sampler sampler;
 GX2ContextState* tvContextState;
+GX2ContextState* curContextSave;
 bool copy = true;
 
 /**
@@ -162,9 +163,12 @@ void drawTexture(GX2Texture * texture, GX2Sampler* sampler, float x, float y, in
 	Texture2DShader::instance()->draw();
 }
 
+DECL_FUNCTION(void, GX2SetContextState, GX2ContextState * curContext) {
+	curContextSave = curContext;
+	real_GX2SetContextState(curContext);
+}
 DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2ScanTarget target) {
     //DEBUG_FUNCTION_LINE("cbuf: %08X; target: %d\n", cbuf, target);
-
     if (!main_cbuf.surface.imageSize) {
 		GX2InitColorBuffer(&main_cbuf, GX2_SURFACE_DIM_TEXTURE_2D, 854, 480, 1, GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8, (GX2AAMode)GX2_AA_MODE1X);
 		GX2InitTexture(&drcTex,854,480,1,0,GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8,GX2_SURFACE_DIM_TEXTURE_2D, GX2_TILE_MODE_LINEAR_ALIGNED);
@@ -201,56 +205,34 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
     if (target == GX2_SCAN_TARGET_DRC) {
         if (main_cbuf.surface.image) {
 			copyToTexture(cbuf,&drcTex);
-        } else {
-            //DEBUG_FUNCTION_LINE("oop\n");
         }
         real_GX2CopyColorBufferToScanBuffer(cbuf, target);
     } else if (target == GX2_SCAN_TARGET_TV) {
-		if(copy){
-			// When we copy the current frame, everything stop working.
-			copyToTexture(cbuf,&tvTex);			
-		}else{
-			//GX2Invalidate((GX2InvalidateMode)(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_CPU_TEXTURE), cbuf->surface.image, cbuf->surface.imageSize);
-				
-			//GX2SetAlphaTest(TRUE, GX2_COMPARE_FUNC_GREATER, 0.0f);
-			//GX2SetDepthOnlyControl(FALSE, FALSE, GX2_COMPARE_FUNC_NEVER);
-			//GX2SetColorControl(GX2_LOGIC_OP_COPY, 0xFF, FALSE, TRUE);
-			//GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, FALSE, FALSE);
-			
-			//
-			//copyToTexture(cbuf,&tvTex);
-			//GX2DrawDone();
-			
-			//GX2ClearColor(cbuf, 0.0f, 0.0f, 0.0f, 1.0f);
-			//GX2SetViewport(0.0f, 0.0f, cbuf->surface.width, cbuf->surface.height, 0.0f, 1.0f);
-			//GX2SetScissor(0, 0, cbuf->surface.width, cbuf->surface.height);
-			
-			//GX2SetDepthOnlyControl(GX2_ENABLE, GX2_ENABLE, GX2_COMPARE_FUNC_LEQUAL);
-			//GX2SetColorControl(GX2_LOGIC_OP_COPY, 1, GX2_DISABLE, GX2_ENABLE);
-			//GX2SetBlendControl(GX2_RENDER_TARGET_0, GX2_BLEND_MODE_SRC_ALPHA, GX2_BLEND_MODE_INV_SRC_ALPHA, GX2_BLEND_COMBINE_MODE_ADD, GX2_ENABLE, GX2_BLEND_MODE_SRC_ALPHA, GX2_BLEND_MODE_INV_SRC_ALPHA, GX2_BLEND_COMBINE_MODE_ADD);
-			//GX2SetCullOnlyControl(GX2_FRONT_FACE_CCW, GX2_DISABLE, GX2_ENABLE);
-			
-			//GX2DrawDone();
-			
-			// When we use GX2ClearColor everything stops working. This fills the whole screen white.
-			SimpleColorDrawer::draw(0,0,1280,720);					
-			
-			// draw DRC
-			drawTexture(&drcTex,&sampler, 0,0,1280/2,720);
-			
-			// draw TV
-			drawTexture(&tvTex,&sampler, 1280/2,0,1280/2,720);
-			
-			GX2Invalidate((GX2InvalidateMode)(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_CPU_TEXTURE), cbuf->surface.image, cbuf->surface.imageSize);
-			GX2Flush();	
-			
-			
-			real_GX2CopyColorBufferToScanBuffer(cbuf, target);
-		}
-		copy = !copy;
+		copyToTexture(cbuf,&tvTex);
+
+		GX2SetContextState(curContextSave);			
 		
+		GX2ClearColor(cbuf, 1.0f, 1.0f, 1.0f, 1.0f);
 		
+		GX2SetContextState(curContextSave);
+		
+		GX2SetContextState(NULL);
+		
+		GX2SetViewport(0.0f, 0.0f, cbuf->surface.width, cbuf->surface.height, 0.0f, 1.0f);
+		GX2SetScissor(0, 0, cbuf->surface.width, cbuf->surface.height);
+		
+		// draw DRC
+		drawTexture(&drcTex,&sampler, 0,0,1280/2,720);
+		
+		// draw TV
+		drawTexture(&tvTex,&sampler, 1280/2,0,1280/2,720);
+		
+		GX2Invalidate((GX2InvalidateMode)(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_CPU_TEXTURE), cbuf->surface.image, cbuf->surface.imageSize);
+		GX2Flush();	
+		
+		real_GX2CopyColorBufferToScanBuffer(cbuf, target);
     }
 }
 
 WUPS_MUST_REPLACE(GX2CopyColorBufferToScanBuffer, WUPS_LOADER_LIBRARY_GX2, GX2CopyColorBufferToScanBuffer);
+WUPS_MUST_REPLACE(GX2SetContextState, WUPS_LOADER_LIBRARY_GX2, GX2SetContextState);
