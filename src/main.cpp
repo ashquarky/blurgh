@@ -33,59 +33,38 @@ GX2Texture tvTex;
 GX2Sampler sampler;
 GX2ContextState* ownContextState;
 GX2ContextState* originalContextSave = NULL;
+int32_t curStatus = WUPS_APP_STATUS_BACKGROUND;
 
 /**
     Add this to one of your projects file to have access to SD/USB.
 **/
 WUPS_FS_ACCESS()
 
-/**
-    All of this defines can be used in ANY file.
-    It's possible to split it up into multiple files.
 
-**/
-
-/**
-    Get's called ONCE when the loader exits, but BEFORE the ON_APPLICATION_START gets called or functions are overridden.
-**/
 INITIALIZE_PLUGIN(){
-    socket_lib_init();
-    log_init();
-    DEBUG_FUNCTION_LINE("INITIALIZE_PLUGIN of example_plugin!\n");
-    
-}
-
-
-DEINITIALIZE_PLUGIN(){
-    socket_lib_init();
-    log_init();
-    DEBUG_FUNCTION_LINE("DEINITIALIZE_PLUGIN of example_plugin!\n");
+    memset(&main_cbuf, 0, sizeof(GX2ColorBuffer));
+    DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
 }
 
 ON_APPLICATION_START(){    
     socket_lib_init();
     log_init();
     
-    memset(&main_cbuf,0,sizeof(GX2ColorBuffer));
-    DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));    
-
     DEBUG_FUNCTION_LINE("ON_APPLICATION_START of example_plugin!\n");
 }
 
-ON_APPLICATION_ENDING(){    
-    DEBUG_FUNCTION_LINE("ON_APPLICATION_ENDING of example_plugin!\n");
-
-    //DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
+void freeUsedMemory(){
+    DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
     if (main_cbuf.surface.image) {
         free(main_cbuf.surface.image);
         main_cbuf.surface.image = NULL;
     }
-    //DCFlushRange(&drcTex,sizeof(GX2Texture));
+    DCFlushRange(&drcTex,sizeof(GX2Texture));
     if (drcTex.surface.image) {
         free(drcTex.surface.image);
         drcTex.surface.image = NULL;
     }
-    //DCFlushRange(&tvTex,sizeof(GX2Texture));
+    DCFlushRange(&tvTex,sizeof(GX2Texture));
     if (tvTex.surface.image) {
         free(tvTex.surface.image);
         tvTex.surface.image = NULL;
@@ -94,9 +73,15 @@ ON_APPLICATION_ENDING(){
     if(ownContextState){
         free(ownContextState);
         ownContextState = NULL;
-    }
-    
+    }    
     DCFlushRange(&ownContextState,4);
+}
+
+ON_APPLICATION_ENDING(){    
+    DEBUG_FUNCTION_LINE("ON_APPLICATION_ENDING of example_plugin!\n");
+
+    freeUsedMemory();
+    
     Texture2DShader::destroyInstance();
    
 }
@@ -130,6 +115,7 @@ void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
                 target->surface.image = NULL;
             }
             DEBUG_FUNCTION_LINE("KILL ME \n");
+            return;
             
         }
         GX2ResolveAAColorBuffer(sourceBuffer,&tempSurface, 0, 0);
@@ -169,12 +155,38 @@ void drawTexture(GX2Texture * texture, GX2Sampler* sampler, float x, float y, in
 }
 
 DECL_FUNCTION(void, GX2SetContextState, GX2ContextState * curContext) {
-    originalContextSave = curContext;    
+    if(curStatus == WUPS_APP_STATUS_FOREGROUND){
+        originalContextSave = curContext;    
+    }
     real_GX2SetContextState(curContext);
 }
-DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2ScanTarget target) {    
+
+ON_APP_STATUS_CHANGED(status){
+	curStatus = status;
+    DCFlushRange(&curStatus,sizeof(curStatus));
+    
+    if(status == WUPS_APP_STATUS_FOREGROUND){
+        DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
+        if (main_cbuf.surface.image) {
+            free(main_cbuf.surface.image);
+            main_cbuf.surface.image = NULL;
+        }
+        memset(&main_cbuf, 0, sizeof(GX2ColorBuffer));
+        DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
+        
+		DEBUG_FUNCTION_LINE("ON_APP_STATUS_CHANGED of example_plugin! App is now in foreground\n");
+	}
+}
+
+DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2ScanTarget target) { 
+    if(curStatus != WUPS_APP_STATUS_FOREGROUND){
+        real_GX2CopyColorBufferToScanBuffer(cbuf, target);
+        return;
+    }
     //DEBUG_FUNCTION_LINE("cbuf: %08X; target: %d\n", cbuf, target);
-    if (!main_cbuf.surface.image) {        
+    if (!main_cbuf.surface.image) {
+        freeUsedMemory();
+        
         GX2InitColorBuffer(&main_cbuf, GX2_SURFACE_DIM_TEXTURE_2D, 854, 480, 1, GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8, (GX2AAMode)GX2_AA_MODE1X);
         GX2InitTexture(&drcTex,854/2,480/2,1,0,GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8,GX2_SURFACE_DIM_TEXTURE_2D, GX2_TILE_MODE_LINEAR_ALIGNED);
         drcTex.surface.use =  (GX2SurfaceUse) (GX2_SURFACE_USE_COLOR_BUFFER | GX2_SURFACE_USE_TEXTURE);
