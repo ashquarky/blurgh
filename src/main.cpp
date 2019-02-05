@@ -43,45 +43,39 @@ WUPS_FS_ACCESS()
 
 INITIALIZE_PLUGIN(){
     memset(&main_cbuf, 0, sizeof(GX2ColorBuffer));
-    DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
 }
 
 ON_APPLICATION_START(){
     socket_lib_init();
     log_init();
 
-    DEBUG_FUNCTION_LINE("ON_APPLICATION_START of example_plugin!\n");
+    DEBUG_FUNCTION_LINE("VideoSquoosher: Hi!\n");
 }
 
 void freeUsedMemory(){
-    DCFlushRange(&main_cbuf, sizeof(GX2ColorBuffer));
     if (main_cbuf.surface.image) {
         free(main_cbuf.surface.image);
         main_cbuf.surface.image = NULL;
     }
 
-    DCFlushRange(&drcTex, sizeof(GX2Texture));
     if (drcTex.surface.image) {
         free(drcTex.surface.image);
         drcTex.surface.image = NULL;
     }
 
-    DCFlushRange(&tvTex, sizeof(GX2Texture));
     if (tvTex.surface.image) {
         free(tvTex.surface.image);
         tvTex.surface.image = NULL;
     }
 
-    DCFlushRange(&ownContextState, 4);
     if(ownContextState){
         free(ownContextState);
         ownContextState = NULL;
     }
-    DCFlushRange(&ownContextState, 4);
 }
 
 ON_APPLICATION_ENDING(){
-    DEBUG_FUNCTION_LINE("ON_APPLICATION_ENDING of example_plugin!\n");
+    DEBUG_FUNCTION_LINE("VideoSquoosher: shutting down...\n");
 
     freeUsedMemory();
 
@@ -94,17 +88,13 @@ void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
         return;
     }
     if (sourceBuffer->surface.aa == GX2_AA_MODE1X) {
-        //DEBUG_FUNCTION_LINE("copy \n");
         // If AA is disabled, we can simply use GX2CopySurface.
         GX2CopySurface(&sourceBuffer->surface,
             sourceBuffer->viewMip,
             sourceBuffer->viewFirstSlice,
             &target->surface, 0, 0);
-
-        GX2DrawDone();
     } else {
         // If AA is enabled, we need to resolve the AA buffer.
-        DEBUG_FUNCTION_LINE("Resolve AA \n");
 
         // Allocate surface to resolve buffer onto
         GX2Surface tempSurface;
@@ -117,13 +107,11 @@ void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
             tempSurface.imageSize
         );
         if(tempSurface.image == NULL) {
-            DEBUG_FUNCTION_LINE("failed to allocate data AA.\n");
+            DEBUG_FUNCTION_LINE("VideoSquoosher: failed to allocate AA surface\n");
             if(target->surface.image != NULL) {
                 free(target->surface.image);
                 target->surface.image = NULL;
             }
-
-            DEBUG_FUNCTION_LINE("KILL ME \n");
             return;
         }
 
@@ -131,15 +119,11 @@ void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
         GX2ResolveAAColorBuffer(sourceBuffer,&tempSurface, 0, 0);
         GX2CopySurface(&tempSurface, 0, 0,&target->surface, 0, 0);
 
-        // Sync CPU and GPU
-        GX2DrawDone();
-
         if(tempSurface.image != NULL) {
             free(tempSurface.image);
             tempSurface.image = NULL;
         }
     }
-    GX2Invalidate(GX2_INVALIDATE_MODE_CPU, target->surface.image, target->surface.imageSize);
 }
 
 void drawTexture(GX2Texture * texture, GX2Sampler* sampler, float x, float y, int32_t width, int32_t height){
@@ -173,18 +157,15 @@ DECL_FUNCTION(void, GX2SetContextState, GX2ContextState * curContext) {
 
 ON_APP_STATUS_CHANGED(status){
     curStatus = status;
-    DCFlushRange(&curStatus,sizeof(curStatus));
 
     if(status == WUPS_APP_STATUS_FOREGROUND){
-        DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
         if (main_cbuf.surface.image) {
             free(main_cbuf.surface.image);
             main_cbuf.surface.image = NULL;
         }
         memset(&main_cbuf, 0, sizeof(GX2ColorBuffer));
-        DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
 
-        DEBUG_FUNCTION_LINE("ON_APP_STATUS_CHANGED of example_plugin! App is now in foreground\n");
+        DEBUG_FUNCTION_LINE("VideoSquoosher: Moving to foreground\n");
     }
 }
 
@@ -193,7 +174,7 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
         real_GX2CopyColorBufferToScanBuffer(cbuf, target);
         return;
     }
-    //DEBUG_FUNCTION_LINE("cbuf: %08X; target: %d\n", cbuf, target);
+
     if (!main_cbuf.surface.image) {
         freeUsedMemory();
 
@@ -210,13 +191,15 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
                 main_cbuf.surface.imageSize
             );
             if(main_cbuf.surface.image == NULL){
-                OSFatal("Failed to alloc main_cbuf\n");
+                OSFatal("VideoSquoosher: Failed to alloc main_cbuf\n");
             }
 
-            GX2Invalidate(GX2_INVALIDATE_MODE_CPU, main_cbuf.surface.image, main_cbuf.surface.imageSize);
-            DEBUG_FUNCTION_LINE("allocated cbuf %08X\n", main_cbuf.surface.image);
+            DEBUG_FUNCTION_LINE("VideoSquoosher: allocated %dx%d cbuf %08X\n",
+                main_cbuf.surface.width,
+                main_cbuf.surface.height,
+                main_cbuf.surface.image);
         } else {
-            DEBUG_FUNCTION_LINE("GX2InitTexture failed for main_cbuf!\n");
+            DEBUG_FUNCTION_LINE("VideoSquoosher: GX2InitTexture failed for main_cbuf!\n");
         }
 
         GX2InitTexture(&drcTex,
@@ -234,13 +217,15 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
                 drcTex.surface.imageSize
             );
             if(drcTex.surface.image == NULL){
-                OSFatal("Failed to alloc drcTex\n");
+                OSFatal("VideoSquoosher: Failed to alloc drcTex\n");
             }
 
-            GX2Invalidate(GX2_INVALIDATE_MODE_CPU, drcTex.surface.image, drcTex.surface.imageSize);
-            DEBUG_FUNCTION_LINE("allocated drcTex %08X\n", drcTex.surface.image);
+            DEBUG_FUNCTION_LINE("VideoSquoosher: allocated %dx%d drcTex %08X\n",
+                drcTex.surface.width,
+                drcTex.surface.height,
+                drcTex.surface.image);
         } else {
-            DEBUG_FUNCTION_LINE("GX2InitTexture failed for drcTex!\n");
+            DEBUG_FUNCTION_LINE("VideoSquoosher: GX2InitTexture failed for drcTex!\n");
         }
 
         GX2InitTexture(&tvTex,
@@ -258,13 +243,15 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
                 tvTex.surface.imageSize
             );
             if(tvTex.surface.image == NULL){
-                OSFatal("Failed to alloc tvTex\n");
+                OSFatal("VideoSquoosher: Failed to alloc tvTex\n");
             }
 
-            GX2Invalidate(GX2_INVALIDATE_MODE_CPU, tvTex.surface.image, tvTex.surface.imageSize);
-            DEBUG_FUNCTION_LINE("allocated tvTex %08X\n", tvTex.surface.image);
+            DEBUG_FUNCTION_LINE("VideoSquoosher: allocated %dx%d tvTex %08X\n",
+                tvTex.surface.width,
+                tvTex.surface.height,
+                tvTex.surface.image);
         } else {
-            DEBUG_FUNCTION_LINE("GX2InitTexture failed for tvTex!\n");
+            DEBUG_FUNCTION_LINE("VideoSquoosher: GX2InitTexture failed for tvTex!\n");
         }
 
         GX2InitSampler(&sampler,
@@ -277,7 +264,7 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
             sizeof(GX2ContextState)
         );
         if(ownContextState == NULL){
-            OSFatal("Failed to alloc ownContextState\n");
+            OSFatal("VideoSquoosher: Failed to alloc ownContextState\n");
         }
         GX2SetupContextStateEx(ownContextState, GX2_TRUE);
 
@@ -314,16 +301,13 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
             // draw TV
             drawTexture(&tvTex, &sampler, 1280/2, 0, 1280/2, 720);
 
-            GX2Invalidate((GX2InvalidateMode)(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_CPU_TEXTURE), main_cbuf.surface.image, main_cbuf.surface.imageSize);
-            GX2Flush();
-
             GX2SetContextState(originalContextSave);
 
             real_GX2CopyColorBufferToScanBuffer(&main_cbuf, target);
             return;
         }
     }else{
-        DEBUG_FUNCTION_LINE("main_cbuf.surface.image is null \n");
+        DEBUG_FUNCTION_LINE("VideoSquoosher: main_cbuf.surface.image is null \n");
     }
 
     real_GX2CopyColorBufferToScanBuffer(cbuf, target);
