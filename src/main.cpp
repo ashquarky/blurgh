@@ -12,6 +12,8 @@
 #include <gx2/state.h>
 #include <gx2/clear.h>
 #include <gx2/event.h>
+#include <coreinit/cache.h>
+#include <coreinit/debug.h>
 
 #include "shaders/Texture2DShader.h"
 
@@ -29,8 +31,8 @@ GX2ColorBuffer main_cbuf;
 GX2Texture drcTex;
 GX2Texture tvTex;
 GX2Sampler sampler;
-GX2ContextState* tvContextState;
-GX2ContextState* curContextSave;
+GX2ContextState* ownContextState;
+GX2ContextState* originalContextSave = NULL;
 
 /**
     Add this to one of your projects file to have access to SD/USB.
@@ -64,34 +66,34 @@ ON_APPLICATION_START(){
     log_init();
 
     DEBUG_FUNCTION_LINE("ON_APPLICATION_START of example_plugin!\n");
-    
-    //tvContextState = (GX2ContextState*)memalign(GX2_CONTEXT_STATE_ALIGNMENT,sizeof(GX2ContextState));
-    //GX2SetupContextStateEx(tvContextState, GX2_TRUE);    
-    
-    //GX2SetContextState(tvContextState);
-    //GX2SetColorBuffer(&main_cbuf, GX2_RENDER_TARGET_0);
 }
 ON_APPLICATION_ENDING(){
     DEBUG_FUNCTION_LINE("ON_APPLICATION_ENDING of example_plugin!\n");
 
+	//DCFlushRange(&main_cbuf,sizeof(GX2ColorBuffer));
     if (main_cbuf.surface.image) {
         free(main_cbuf.surface.image);
         main_cbuf.surface.image = NULL;
     }
+	//DCFlushRange(&drcTex,sizeof(GX2Texture));
     if (drcTex.surface.image) {
         free(drcTex.surface.image);
         drcTex.surface.image = NULL;
     }
+	//DCFlushRange(&tvTex,sizeof(GX2Texture));
     if (tvTex.surface.image) {
         free(tvTex.surface.image);
         tvTex.surface.image = NULL;
     }
+	DCFlushRange(&ownContextState,4);
+	if(ownContextState){
+        free(ownContextState);
+        ownContextState = NULL;
+    }
+	
+	DCFlushRange(&ownContextState,4);
     Texture2DShader::destroyInstance();
-    //if(tvContextState){
-    //    free(tvContextState);
-    //    tvContextState = NULL;
-    //}
-    
+   
 }
 
 void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
@@ -159,23 +161,27 @@ void drawTexture(GX2Texture * texture, GX2Sampler* sampler, float x, float y, in
 }
 
 DECL_FUNCTION(void, GX2SetContextState, GX2ContextState * curContext) {
-    curContextSave = curContext;
+    originalContextSave = curContext;
     real_GX2SetContextState(curContext);
 }
 DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2ScanTarget target) {
     //DEBUG_FUNCTION_LINE("cbuf: %08X; target: %d\n", cbuf, target);
     if (!main_cbuf.surface.imageSize) {
+		
         GX2InitColorBuffer(&main_cbuf, GX2_SURFACE_DIM_TEXTURE_2D, 854, 480, 1, GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8, (GX2AAMode)GX2_AA_MODE1X);
-        GX2InitTexture(&drcTex,854,480,1,0,GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8,GX2_SURFACE_DIM_TEXTURE_2D, GX2_TILE_MODE_LINEAR_ALIGNED);
+        GX2InitTexture(&drcTex,854/2,480/2,1,0,GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8,GX2_SURFACE_DIM_TEXTURE_2D, GX2_TILE_MODE_LINEAR_ALIGNED);
         drcTex.surface.use =  (GX2SurfaceUse) (GX2_SURFACE_USE_COLOR_BUFFER | GX2_SURFACE_USE_TEXTURE);
         
-        GX2InitTexture(&tvTex,854,480,1,0,GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8,GX2_SURFACE_DIM_TEXTURE_2D, GX2_TILE_MODE_LINEAR_ALIGNED);
+        GX2InitTexture(&tvTex,854/2,480/2,1,0,GX2_SURFACE_FORMAT_UNORM_R8_G8_B8_A8,GX2_SURFACE_DIM_TEXTURE_2D, GX2_TILE_MODE_LINEAR_ALIGNED);
         tvTex.surface.use =  (GX2SurfaceUse) (GX2_SURFACE_USE_COLOR_BUFFER | GX2_SURFACE_USE_TEXTURE);
 
         GX2InitSampler(&sampler, GX2_TEX_CLAMP_MODE_CLAMP, GX2_TEX_XY_FILTER_MODE_LINEAR);
 
         if (main_cbuf.surface.imageSize) {
             main_cbuf.surface.image = memalign(main_cbuf.surface.alignment, main_cbuf.surface.imageSize);
+			if(main_cbuf.surface.image == NULL){
+				OSFatal("Failed to alloc main_cbuf\n");
+			}
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU, main_cbuf.surface.image, main_cbuf.surface.imageSize);
             DEBUG_FUNCTION_LINE("allocated cbuf %08X\n", main_cbuf.surface.image);
         } else {
@@ -183,6 +189,9 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
         }
         if (drcTex.surface.imageSize) {
             drcTex.surface.image = memalign(drcTex.surface.alignment, drcTex.surface.imageSize);
+			if(drcTex.surface.image == NULL){
+				OSFatal("Failed to alloc drcTex\n");
+			}
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU, drcTex.surface.image, drcTex.surface.imageSize);
             DEBUG_FUNCTION_LINE("allocated drcTex %08X\n", drcTex.surface.image);
         } else {
@@ -190,11 +199,25 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
         }
         if (tvTex.surface.imageSize) {
             tvTex.surface.image = memalign(tvTex.surface.alignment, tvTex.surface.imageSize);
+			if(tvTex.surface.image == NULL){
+				OSFatal("Failed to alloc tvTex\n");
+			}
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU, tvTex.surface.image, tvTex.surface.imageSize);
             DEBUG_FUNCTION_LINE("allocated tvTex %08X\n", tvTex.surface.image);
         } else {
             DEBUG_FUNCTION_LINE("didn't allocate tvTex?\n");
         }
+		
+		ownContextState = (GX2ContextState*)memalign(GX2_CONTEXT_STATE_ALIGNMENT,sizeof(GX2ContextState));
+		if(ownContextState == NULL){
+			OSFatal("Failed to alloc ownContextState\n");
+		}
+		GX2SetupContextStateEx(ownContextState, GX2_TRUE);
+		GX2SetContextState(ownContextState);
+		GX2SetColorBuffer(&main_cbuf, GX2_RENDER_TARGET_0);
+		
+		GX2SetContextState(originalContextSave);
+	
     }
 
     if (target == GX2_SCAN_TARGET_DRC) {
@@ -205,16 +228,14 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
     } else if (target == GX2_SCAN_TARGET_TV) {
         copyToTexture(cbuf,&tvTex);
 
-        GX2SetContextState(curContextSave);            
+        GX2SetContextState(originalContextSave);            
         
         GX2ClearColor(cbuf, 1.0f, 1.0f, 1.0f, 1.0f);
         
-        GX2SetContextState(curContextSave);
+        GX2SetContextState(ownContextState);
         
-        GX2SetContextState(NULL);
-        
-        GX2SetViewport(0.0f, 0.0f, cbuf->surface.width, cbuf->surface.height, 0.0f, 1.0f);
-        GX2SetScissor(0, 0, cbuf->surface.width, cbuf->surface.height);
+        GX2SetViewport(0.0f, 0.0f, main_cbuf.surface.width, main_cbuf.surface.height, 0.0f, 1.0f);
+        GX2SetScissor(0, 0, main_cbuf.surface.width, main_cbuf.surface.height);
         
         // draw DRC
         drawTexture(&drcTex,&sampler, 0,0,1280/2,720);
@@ -222,10 +243,12 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
         // draw TV
         drawTexture(&tvTex,&sampler, 1280/2,0,1280/2,720);
         
-        GX2Invalidate((GX2InvalidateMode)(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_CPU_TEXTURE), cbuf->surface.image, cbuf->surface.imageSize);
-        GX2Flush();    
+        GX2Invalidate((GX2InvalidateMode)(GX2_INVALIDATE_MODE_COLOR_BUFFER | GX2_INVALIDATE_MODE_CPU_TEXTURE), main_cbuf.surface.image, main_cbuf.surface.imageSize);
+        GX2Flush();
+		
+		GX2SetContextState(originalContextSave);
         
-        real_GX2CopyColorBufferToScanBuffer(cbuf, target);
+        real_GX2CopyColorBufferToScanBuffer(&main_cbuf, target);
     }
 }
 
