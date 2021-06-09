@@ -17,6 +17,7 @@
 #ifndef VERTEX_SHADER_H
 #define VERTEX_SHADER_H
 
+#include <memory/mappedmemory.h>
 #include <string.h>
 #include "Shader.h"
 #include <gx2/enum.h>
@@ -26,7 +27,7 @@ public:
     VertexShader(uint32_t numAttr)
         : attributesCount( numAttr )
         , attributes( new GX2AttribStream[attributesCount] )
-        , vertexShader( (GX2VertexShader*) memalign(0x40, sizeof(GX2VertexShader)) ) {
+        , vertexShader( (GX2VertexShader*) MEMAllocFromMappedMemoryForGX2Ex(sizeof(GX2VertexShader), 0x40) ) {
         if(vertexShader) {
             memset(vertexShader, 0, sizeof(GX2VertexShader));
             vertexShader->mode = GX2_SHADER_MODE_UNIFORM_REGISTER;
@@ -38,39 +39,39 @@ public:
 
         if(vertexShader) {
             if(vertexShader->program)
-                free(vertexShader->program);
+                MEMFreeToMappedMemory(vertexShader->program);
 
             for(uint32_t i = 0; i < vertexShader->uniformBlockCount; i++)
-                free((void*)vertexShader->uniformBlocks[i].name);
+                MEMFreeToMappedMemory((void*)vertexShader->uniformBlocks[i].name);
 
             if(vertexShader->uniformBlocks)
-                free((void*)vertexShader->uniformBlocks);
+                MEMFreeToMappedMemory((void*)vertexShader->uniformBlocks);
 
             for(uint32_t i = 0; i < vertexShader->uniformVarCount; i++)
-                free((void*)vertexShader->uniformVars[i].name);
+                MEMFreeToMappedMemory((void*)vertexShader->uniformVars[i].name);
 
             if(vertexShader->uniformVars)
-                free((void*)vertexShader->uniformVars);
+                MEMFreeToMappedMemory((void*)vertexShader->uniformVars);
 
             if(vertexShader->initialValues)
-                free((void*)vertexShader->initialValues);
+                MEMFreeToMappedMemory((void*)vertexShader->initialValues);
 
             for(uint32_t i = 0; i < vertexShader->samplerVarCount; i++)
-                free((void*)vertexShader->samplerVars[i].name);
+                MEMFreeToMappedMemory((void*)vertexShader->samplerVars[i].name);
 
             if(vertexShader->samplerVars)
-                free((void*)vertexShader->samplerVars);
+                MEMFreeToMappedMemory((void*)vertexShader->samplerVars);
 
             for(uint32_t i = 0; i < vertexShader->attribVarCount; i++)
-                free((void*)vertexShader->attribVars[i].name);
+                MEMFreeToMappedMemory((void*)vertexShader->attribVars[i].name);
 
             if(vertexShader->attribVars)
-                free((void*)vertexShader->attribVars);
+                MEMFreeToMappedMemory((void*)vertexShader->attribVars);
 
             if(vertexShader->loopVars)
-                free((void*)vertexShader->loopVars);
+                MEMFreeToMappedMemory((void*)vertexShader->loopVars);
 
-            free(vertexShader);
+            MEMFreeToMappedMemory(vertexShader);
         }
     }
 
@@ -80,7 +81,7 @@ public:
 
         //! this must be moved into an area where the graphic engine has access to and must be aligned to 0x100
         vertexShader->size = programSize;
-        vertexShader->program = (uint8_t*) memalign(GX2_SHADER_PROGRAM_ALIGNMENT, vertexShader->size);
+        vertexShader->program = (uint8_t*) MEMAllocFromMappedMemoryForGX2Ex(vertexShader->size, GX2_SHADER_PROGRAM_ALIGNMENT);
         if(vertexShader->program) {
             memcpy(vertexShader->program, program, vertexShader->size);
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, vertexShader->program, vertexShader->size);
@@ -95,16 +96,16 @@ public:
 
         uint32_t idx = vertexShader->uniformVarCount;
 
-        GX2UniformVar* newVar = (GX2UniformVar*) malloc((vertexShader->uniformVarCount + 1) * sizeof(GX2UniformVar));
+        GX2UniformVar* newVar = (GX2UniformVar*) MEMAllocFromMappedMemoryForGX2Ex((vertexShader->uniformVarCount + 1) * sizeof(GX2UniformVar), 0x10);
         if(newVar) {
             if(vertexShader->uniformVarCount > 0) {
                 memcpy(newVar, vertexShader->uniformVars, vertexShader->uniformVarCount * sizeof(GX2UniformVar));
-                free(vertexShader->uniformVars);
+                MEMFreeToMappedMemory(vertexShader->uniformVars);
             }
             vertexShader->uniformVars = newVar;
 
             memcpy(vertexShader->uniformVars + idx, &var, sizeof(GX2UniformVar));
-            vertexShader->uniformVars[idx].name = (char*) malloc(strlen(var.name) + 1);
+            vertexShader->uniformVars[idx].name = (char*) MEMAllocFromMappedMemory(strlen(var.name) + 1);
             strcpy((char*)vertexShader->uniformVars[idx].name, var.name);
 
             vertexShader->uniformVarCount++;
@@ -117,16 +118,16 @@ public:
 
         uint32_t idx = vertexShader->attribVarCount;
 
-        GX2AttribVar* newVar = (GX2AttribVar*) malloc((vertexShader->attribVarCount + 1) * sizeof(GX2AttribVar));
+        GX2AttribVar* newVar = (GX2AttribVar*) MEMAllocFromMappedMemoryForGX2Ex((vertexShader->attribVarCount + 1) * sizeof(GX2AttribVar), 0x10);
         if(newVar) {
             if(vertexShader->attribVarCount > 0) {
                 memcpy(newVar, vertexShader->attribVars, vertexShader->attribVarCount * sizeof(GX2AttribVar));
-                free(vertexShader->attribVars);
+                MEMFreeToMappedMemory(vertexShader->attribVars);
             }
             vertexShader->attribVars = newVar;
 
             memcpy(vertexShader->attribVars + idx, &var, sizeof(GX2AttribVar));
-            vertexShader->attribVars[idx].name = (char*) malloc(strlen(var.name) + 1);
+            vertexShader->attribVars[idx].name = (char*) MEMAllocFromMappedMemory(strlen(var.name) + 1);
             strcpy((char*)vertexShader->attribVars[idx].name, var.name);
 
             vertexShader->attribVarCount++;

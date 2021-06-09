@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  ****************************************************************************/
-#include <malloc.h>
+#include <memory/mappedmemory.h>
 #include <string.h>
 #include "ColorShader.h"
 
@@ -150,7 +150,7 @@ ColorShader::ColorShader()
     fetchShader = new FetchShader(vertexShader.getAttributeBuffer(), vertexShader.getAttributesCount());
 
     //! model vertex has to be align and cannot be in unknown regions for GX2 like 0xBCAE1000
-    positionVtxs = (float*)memalign(GX2_VERTEX_BUFFER_ALIGNMENT, cuPositionVtxsSize);
+    positionVtxs = (float*)MEMAllocFromMappedMemoryForGX2Ex(cuPositionVtxsSize, GX2_VERTEX_BUFFER_ALIGNMENT);
     if(positionVtxs) {
         //! position vertex structure
         int32_t i = 0;
@@ -172,7 +172,7 @@ ColorShader::ColorShader()
 
 ColorShader::~ColorShader() {
     if(positionVtxs) {
-        free(positionVtxs);
+        MEMFreeToMappedMemory(positionVtxs);
         positionVtxs = NULL;
     }
 

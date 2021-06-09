@@ -7,10 +7,10 @@
 */
 
 #include <wups.h>
-#include <malloc.h>
+#include <memory/mappedmemory.h>
 #include <string.h>
-#include <nsysnet/socket.h>
 #include <utils/logger.h>
+#include <whb/log_udp.h>
 #include <coreinit/filesystem.h>
 #include <gx2/swap.h>
 #include <gx2/enum.h>
@@ -42,54 +42,51 @@ GX2Texture tvTex;
 GX2Sampler sampler;
 GX2ContextState* ownContextState;
 GX2ContextState* originalContextSave = NULL;
-int32_t curStatus = WUPS_APP_STATUS_BACKGROUND;
+bool inForeground = true;
 
 /**
     Add this to one of your projects file to have access to SD/USB.
 **/
-WUPS_FS_ACCESS()
+//WUPS_FS_ACCESS()
 
 
-INITIALIZE_PLUGIN(){
+INITIALIZE_PLUGIN() {
     memset(&main_cbuf, 0, sizeof(GX2ColorBuffer));
-}
-
-ON_APPLICATION_START(){
-    socket_lib_init();
-    log_init();
+    WHBLogUdpInit();
 
     DEBUG_FUNCTION_LINE("VideoSquoosher: Hi!\n");
 }
 
 void freeUsedMemory(){
     if (main_cbuf.surface.image) {
-        free(main_cbuf.surface.image);
+        MEMFreeToMappedMemory(main_cbuf.surface.image);
         main_cbuf.surface.image = NULL;
     }
 
     if (drcTex.surface.image) {
-        free(drcTex.surface.image);
+        MEMFreeToMappedMemory(drcTex.surface.image);
         drcTex.surface.image = NULL;
     }
 
     if (tvTex.surface.image) {
-        free(tvTex.surface.image);
+        MEMFreeToMappedMemory(tvTex.surface.image);
         tvTex.surface.image = NULL;
     }
 
     if(ownContextState){
-        free(ownContextState);
+        MEMFreeToMappedMemory(ownContextState);
         ownContextState = NULL;
     }
 }
 
-ON_APPLICATION_ENDING(){
+ON_APPLICATION_ENDS() {
     DEBUG_FUNCTION_LINE("VideoSquoosher: shutting down...\n");
 
     freeUsedMemory();
 
     Texture2DShader::destroyInstance();
 
+    WHBLogUdpDeinit();
 }
 
 void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
@@ -111,14 +108,14 @@ void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
         tempSurface.aa = GX2_AA_MODE1X;
         GX2CalcSurfaceSizeAndAlignment(&tempSurface);
 
-        tempSurface.image = memalign(
-            tempSurface.alignment,
-            tempSurface.imageSize
+        tempSurface.image = MEMAllocFromMappedMemoryForGX2Ex(
+            tempSurface.imageSize,
+            tempSurface.alignment
         );
         if(tempSurface.image == NULL) {
             DEBUG_FUNCTION_LINE("VideoSquoosher: failed to allocate AA surface\n");
             if(target->surface.image != NULL) {
-                free(target->surface.image);
+                MEMFreeToMappedMemory(target->surface.image);
                 target->surface.image = NULL;
             }
             return;
@@ -129,7 +126,7 @@ void copyToTexture(GX2ColorBuffer* sourceBuffer, GX2Texture * target){
         GX2CopySurface(&tempSurface, 0, 0,&target->surface, 0, 0);
 
         if(tempSurface.image != NULL) {
-            free(tempSurface.image);
+            MEMFreeToMappedMemory(tempSurface.image);
             tempSurface.image = NULL;
         }
     }
@@ -158,28 +155,28 @@ void drawTexture(GX2Texture * texture, GX2Sampler* sampler, float x, float y, in
 }
 
 DECL_FUNCTION(void, GX2SetContextState, GX2ContextState * curContext) {
-    if(curStatus == WUPS_APP_STATUS_FOREGROUND){
+    if(inForeground) {
         originalContextSave = curContext;
     }
     real_GX2SetContextState(curContext);
 }
 
-ON_APP_STATUS_CHANGED(status){
-    curStatus = status;
+ON_RELEASE_FOREGROUND() {
+  if (main_cbuf.surface.image) {
+      MEMFreeToMappedMemory(main_cbuf.surface.image);
+      main_cbuf.surface.image = NULL;
+  }
+  memset(&main_cbuf, 0, sizeof(GX2ColorBuffer));
 
-    if(status == WUPS_APP_STATUS_FOREGROUND){
-        if (main_cbuf.surface.image) {
-            free(main_cbuf.surface.image);
-            main_cbuf.surface.image = NULL;
-        }
-        memset(&main_cbuf, 0, sizeof(GX2ColorBuffer));
-
-        DEBUG_FUNCTION_LINE("VideoSquoosher: Moving to foreground\n");
-    }
+  inForeground = false;
+  DEBUG_FUNCTION_LINE("VideoSquoosher: Moving to background\n");
+}
+ON_ACQUIRED_FOREGROUND() {
+  inForeground = true;
 }
 
 DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2ScanTarget target) {
-    if(curStatus != WUPS_APP_STATUS_FOREGROUND){
+    if (!inForeground) {
         real_GX2CopyColorBufferToScanBuffer(cbuf, target);
         return;
     }
@@ -195,9 +192,10 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
         );
 
         if (main_cbuf.surface.imageSize) {
-            main_cbuf.surface.image = memalign(
-                main_cbuf.surface.alignment,
-                main_cbuf.surface.imageSize
+            DEBUG_FUNCTION_LINE("allocating main_cbuf %08x, align %08x\n", main_cbuf.surface.imageSize, main_cbuf.surface.alignment);
+            main_cbuf.surface.image = MEMAllocFromMappedMemoryForGX2Ex(
+                main_cbuf.surface.imageSize,
+                main_cbuf.surface.alignment
             );
             if(main_cbuf.surface.image == NULL){
                 OSFatal("VideoSquoosher: Failed to alloc main_cbuf\n");
@@ -221,9 +219,10 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
             (GX2_SURFACE_USE_COLOR_BUFFER | GX2_SURFACE_USE_TEXTURE);
 
         if (drcTex.surface.imageSize) {
-            drcTex.surface.image = memalign(
-                drcTex.surface.alignment,
-                drcTex.surface.imageSize
+            DEBUG_FUNCTION_LINE("allocating drcTex %08x, align %08x\n", drcTex.surface.imageSize, drcTex.surface.alignment);
+            drcTex.surface.image = MEMAllocFromMappedMemoryForGX2Ex(
+                drcTex.surface.imageSize,
+                drcTex.surface.alignment
             );
             if(drcTex.surface.image == NULL){
                 OSFatal("VideoSquoosher: Failed to alloc drcTex\n");
@@ -247,9 +246,10 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
             (GX2_SURFACE_USE_COLOR_BUFFER | GX2_SURFACE_USE_TEXTURE);
 
         if (tvTex.surface.imageSize) {
-            tvTex.surface.image = memalign(
-                tvTex.surface.alignment,
-                tvTex.surface.imageSize
+            DEBUG_FUNCTION_LINE("allocating tvTex %08x, align %08x\n", tvTex.surface.imageSize, tvTex.surface.alignment);
+            tvTex.surface.image = MEMAllocFromMappedMemoryForGX2Ex(
+                tvTex.surface.imageSize,
+                tvTex.surface.alignment
             );
             if(tvTex.surface.image == NULL){
                 OSFatal("VideoSquoosher: Failed to alloc tvTex\n");
@@ -268,9 +268,9 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
             GX2_TEX_XY_FILTER_MODE_LINEAR
         );
 
-        ownContextState = (GX2ContextState*)memalign(
-            GX2_CONTEXT_STATE_ALIGNMENT,
-            sizeof(GX2ContextState)
+        ownContextState = (GX2ContextState*)MEMAllocFromMappedMemoryForGX2Ex(
+            sizeof(GX2ContextState),
+            GX2_CONTEXT_STATE_ALIGNMENT
         );
         if(ownContextState == NULL){
             OSFatal("VideoSquoosher: Failed to alloc ownContextState\n");
@@ -288,9 +288,9 @@ DECL_FUNCTION(void, GX2CopyColorBufferToScanBuffer, GX2ColorBuffer* cbuf, GX2Sca
         } else if (target == GX2_SCAN_TARGET_TV) {
             copyToTexture(cbuf,&tvTex);
 
-            GX2SetContextState(originalContextSave);
+            GX2SetContextState(ownContextState);
 
-            GX2ClearColor(cbuf, 1.0f, 1.0f, 1.0f, 1.0f);
+            GX2ClearColor(main_cbuf, (float)0x56 / 255, (float)0x7a / 255, (float)0xfc / 255, 1.0f);
 
             GX2SetContextState(ownContextState);
 

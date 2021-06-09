@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  ****************************************************************************/
-#include <malloc.h>
+#include <memory/mappedmemory.h>
 #include <string.h>
 #include "Texture2DShader.h"
 
@@ -246,8 +246,8 @@ Texture2DShader::Texture2DShader()
     fetchShader = new FetchShader(vertexShader.getAttributeBuffer(), vertexShader.getAttributesCount());
 
     //! model vertex has to be align and cannot be in unknown regions for GX2 like 0xBCAE1000
-    posVtxs = (float*)memalign(GX2_VERTEX_BUFFER_ALIGNMENT, ciPositionVtxsSize);
-    texCoords = (float*)memalign(GX2_VERTEX_BUFFER_ALIGNMENT, ciTexCoordsVtxsSize);
+    posVtxs = (float*)MEMAllocFromMappedMemoryForGX2Ex(ciPositionVtxsSize, GX2_VERTEX_BUFFER_ALIGNMENT);
+    texCoords = (float*)MEMAllocFromMappedMemoryForGX2Ex(ciTexCoordsVtxsSize, GX2_VERTEX_BUFFER_ALIGNMENT);
 
     //! defaults for normal square
     //! position vertex structure and texture coordinate vertex structure
@@ -280,11 +280,11 @@ Texture2DShader::Texture2DShader()
 
 Texture2DShader::~Texture2DShader() {
     if(posVtxs) {
-        free(posVtxs);
+        MEMFreeToMappedMemory(posVtxs);
         posVtxs = NULL;
     }
     if(texCoords) {
-        free(texCoords);
+        MEMFreeToMappedMemory(texCoords);
         texCoords = NULL;
     }
 

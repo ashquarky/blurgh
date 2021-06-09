@@ -17,6 +17,7 @@
 #ifndef FETCH_SHADER_H
 #define FETCH_SHADER_H
 
+#include <memory/mappedmemory.h>
 #include "Shader.h"
 
 class FetchShader : public Shader {
@@ -25,18 +26,18 @@ public:
         : fetchShader(NULL)
         , fetchShaderProgramm(NULL) {
         uint32_t shaderSize = GX2CalcFetchShaderSizeEx(attrCount, type, tess);
-        fetchShaderProgramm = (uint8_t*)memalign(GX2_SHADER_PROGRAM_ALIGNMENT, shaderSize);
+        fetchShaderProgramm = (uint8_t*)MEMAllocFromMappedMemoryForGX2Ex(shaderSize, GX2_SHADER_PROGRAM_ALIGNMENT);
         if(fetchShaderProgramm) {
-            fetchShader = new GX2FetchShader;
+            fetchShader = (GX2FetchShader*)MEMAllocFromMappedMemoryForGX2Ex(sizeof(GX2FetchShader), 0x10);
             GX2InitFetchShaderEx(fetchShader, fetchShaderProgramm, attrCount, attributes, type, tess);
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, fetchShaderProgramm, shaderSize);
         }
     }
     virtual ~FetchShader() {
         if(fetchShaderProgramm)
-            free(fetchShaderProgramm);
+            MEMFreeToMappedMemory(fetchShaderProgramm);
         if(fetchShader)
-            delete fetchShader;
+            MEMFreeToMappedMemory(fetchShader);
     }
 
     GX2FetchShader *getFetchShader() const {

@@ -17,7 +17,7 @@
 #ifndef SHADER_H_
 #define SHADER_H_
 
-#include <utils/utils.h>
+//#include <utils/utils.h>
 #include "gx2_ext.h"
 #include <gx2/shaders.h>
 #include <gx2/mem.h>

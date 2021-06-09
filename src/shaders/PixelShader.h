@@ -17,12 +17,13 @@
 #ifndef PIXEL_SHADER_H
 #define PIXEL_SHADER_H
 
+#include <memory/mappedmemory.h>
 #include "Shader.h"
 
 class PixelShader : public Shader {
 public:
     PixelShader()
-        : pixelShader((GX2PixelShader*) memalign(0x40, sizeof(GX2PixelShader))) {
+        : pixelShader((GX2PixelShader*) MEMAllocFromMappedMemoryForGX2Ex(sizeof(GX2PixelShader), 0x40)) {
         if(pixelShader) {
             memset(pixelShader, 0, sizeof(GX2PixelShader));
             pixelShader->mode = GX2_SHADER_MODE_UNIFORM_REGISTER;
@@ -31,33 +32,33 @@ public:
     virtual ~PixelShader() {
         if(pixelShader) {
             if(pixelShader->program)
-                free(pixelShader->program);
+                MEMFreeToMappedMemory(pixelShader->program);
 
             for(uint32_t i = 0; i < pixelShader->uniformBlockCount; i++)
-                free((void*)pixelShader->uniformBlocks[i].name);
+                MEMFreeToMappedMemory((void*)pixelShader->uniformBlocks[i].name);
 
             if(pixelShader->uniformBlocks)
-                free((void*)pixelShader->uniformBlocks);
+                MEMFreeToMappedMemory((void*)pixelShader->uniformBlocks);
 
             for(uint32_t i = 0; i < pixelShader->uniformVarCount; i++)
-                free((void*)pixelShader->uniformVars[i].name);
+                MEMFreeToMappedMemory((void*)pixelShader->uniformVars[i].name);
 
             if(pixelShader->uniformVars)
-                free((void*)pixelShader->uniformVars);
+                MEMFreeToMappedMemory((void*)pixelShader->uniformVars);
 
             if(pixelShader->initialValues)
-                free((void*)pixelShader->initialValues);
+                MEMFreeToMappedMemory((void*)pixelShader->initialValues);
 
             for(uint32_t i = 0; i < pixelShader->samplerVarCount; i++)
-                free((void*)pixelShader->samplerVars[i].name);
+                MEMFreeToMappedMemory((void*)pixelShader->samplerVars[i].name);
 
             if(pixelShader->samplerVars)
-                free((void*)pixelShader->samplerVars);
+                MEMFreeToMappedMemory((void*)pixelShader->samplerVars);
 
             if(pixelShader->loopVars)
-                free((void*)pixelShader->loopVars);
+                MEMFreeToMappedMemory((void*)pixelShader->loopVars);
 
-            free(pixelShader);
+            MEMFreeToMappedMemory(pixelShader);
         }
     }
 
@@ -67,7 +68,7 @@ public:
 
         //! this must be moved into an area where the graphic engine has access to and must be aligned to 0x100
         pixelShader->size = programSize;
-        pixelShader->program = (uint8_t*)memalign(GX2_SHADER_PROGRAM_ALIGNMENT, pixelShader->size);
+        pixelShader->program = (uint8_t*)MEMAllocFromMappedMemoryForGX2Ex(pixelShader->size, GX2_SHADER_PROGRAM_ALIGNMENT);
         if(pixelShader->program) {
             memcpy(pixelShader->program, program, pixelShader->size);
             GX2Invalidate(GX2_INVALIDATE_MODE_CPU_SHADER, pixelShader->program, pixelShader->size);
@@ -82,16 +83,16 @@ public:
 
         uint32_t idx = pixelShader->uniformVarCount;
 
-        GX2UniformVar* newVar = (GX2UniformVar*) malloc((pixelShader->uniformVarCount + 1) * sizeof(GX2UniformVar));
+        GX2UniformVar* newVar = (GX2UniformVar*) MEMAllocFromMappedMemoryForGX2Ex((pixelShader->uniformVarCount + 1) * sizeof(GX2UniformVar), 0x10);
         if(newVar) {
             if(pixelShader->uniformVars) {
                 memcpy(newVar, pixelShader->uniformVars, pixelShader->uniformVarCount * sizeof(GX2UniformVar));
-                free(pixelShader->uniformVars);
+                MEMFreeToMappedMemory(pixelShader->uniformVars);
             }
             pixelShader->uniformVars = newVar;
 
             memcpy(pixelShader->uniformVars + idx, &var, sizeof(GX2UniformVar));
-            pixelShader->uniformVars[idx].name = (char*) malloc(strlen(var.name) + 1);
+            pixelShader->uniformVars[idx].name = (char*) MEMAllocFromMappedMemory(strlen(var.name) + 1);
             strcpy((char*)pixelShader->uniformVars[idx].name, var.name);
 
             pixelShader->uniformVarCount++;
@@ -104,16 +105,16 @@ public:
 
         uint32_t idx = pixelShader->samplerVarCount;
 
-        GX2SamplerVar* newVar = (GX2SamplerVar*) malloc((pixelShader->samplerVarCount + 1) * sizeof(GX2SamplerVar));
+        GX2SamplerVar* newVar = (GX2SamplerVar*) MEMAllocFromMappedMemoryForGX2Ex((pixelShader->samplerVarCount + 1) * sizeof(GX2SamplerVar), 0x10);
         if(newVar) {
             if(pixelShader->samplerVars) {
                 memcpy(newVar, pixelShader->samplerVars, pixelShader->samplerVarCount * sizeof(GX2SamplerVar));
-                free(pixelShader->samplerVars);
+                MEMFreeToMappedMemory(pixelShader->samplerVars);
             }
             pixelShader->samplerVars = newVar;
 
             memcpy(pixelShader->samplerVars + idx, &var, sizeof(GX2SamplerVar));
-            pixelShader->samplerVars[idx].name = (char*) malloc(strlen(var.name) + 1);
+            pixelShader->samplerVars[idx].name = (char*) MEMAllocFromMappedMemory(strlen(var.name) + 1);
             strcpy((char*)pixelShader->samplerVars[idx].name, var.name);
 
             pixelShader->samplerVarCount++;
